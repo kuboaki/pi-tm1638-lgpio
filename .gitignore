@@ -1,0 +1,54 @@
+# autotools generated files
+config.log
+config.status
+config.h
+stamp-h1
+Makefile
+src/Makefile
+examples/Makefile
+doc/Makefile
+doc/Doxyfile
+autom4te.cache/
+
+# build artifacts
+src/*.o
+src/*.a
+src/.deps/
+examples/*.o
+examples/.deps/
+examples/tm1638-hello
+examples/tm1638-clock
+examples/tm1638-buttons
+
+# editor
+*~
+.vscode/
+# doxygen generated docs
+doc/html/
+doc/doxyfile.stamp
+
+# autotools generated (should not be committed)
+Makefile.in
+src/Makefile.in
+examples/Makefile.in
+doc/Makefile.in
+aclocal.m4
+ar-lib
+compile
+depcomp
+install-sh
+missing
+# doxygen generated docs
+doc/html/
+doc/doxyfile.stamp
+
+# autotools generated
+Makefile.in
+src/Makefile.in
+examples/Makefile.in
+doc/Makefile.in
+aclocal.m4
+ar-lib
+depcomp
+install-sh
+missing
