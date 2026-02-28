@@ -2,6 +2,6 @@ lib_LIBRARIES = libtm1638.a
 libtm1638_a_SOURCES = tm1638.c
 include_HEADERS = tm1638.h
 
-AM_CFLAGS = -Wall -std=c99
+AM_CFLAGS = -Wall -std=gnu99 -D_POSIX_C_SOURCE=200809L
 
 CLEANFILES = *~

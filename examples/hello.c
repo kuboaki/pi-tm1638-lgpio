@@ -36,11 +36,10 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-
 #include <stdint.h>
 #include <stdbool.h>
+#include <time.h>
 
-#include <bcm2835.h>
 #include <tm1638.h>
 
 static void knight_rider(tm1638_p t, int n);
@@ -49,12 +48,6 @@ static void flashy(tm1638_p t);
 int main(int argc, char *argv[])
 {
   tm1638_p t;
-
-  if (!bcm2835_init())
-    {
-      printf("Unable to initialize BCM library\n");
-      return -1;
-    }
 
   // t = tm1638_alloc(17, 21, 22);
   t = tm1638_alloc(19, 13, 06);
@@ -65,7 +58,7 @@ int main(int argc, char *argv[])
     }
 
   tm1638_set_7seg_text(t, "Hello !", 0x00);
-  delay(5000);
+  do { struct timespec _ts = {5, 0}; nanosleep(&_ts, NULL); } while(0);
 
   tm1638_send_cls(t);
 
@@ -97,7 +90,7 @@ static void knight_rider(tm1638_p t, int n)
 	  uint8_t m = 128 >> j;
 	  tm1638_set_8leds(t, m, 0);
 	  tm1638_set_7seg_text(t, "", m);
-	  delay(25);
+	  do { struct timespec _ts = {0, (long)(25 * 1000)*1000L}; nanosleep(&_ts, NULL); } while(0);
 	}
 
       for(int j = 0; j < 8; j++)
@@ -105,7 +98,7 @@ static void knight_rider(tm1638_p t, int n)
 	  uint8_t m = 1 << j;
 	  tm1638_set_8leds(t, m, 0);
 	  tm1638_set_7seg_text(t, "", m);
-	  delay(25);
+	  do { struct timespec _ts = {0, (long)(25 * 1000)*1000L}; nanosleep(&_ts, NULL); } while(0);
 	}
     }
 }
@@ -123,7 +116,7 @@ static void flashy(tm1638_p t)
       for(int j = 0; j < 8; j++)
 	{
 	  tm1638_set_7seg_raw(t, i, (1 << j));
-	  delay(50);
+	  do { struct timespec _ts = {0, (long)(50 * 1000)*1000L}; nanosleep(&_ts, NULL); } while(0);
 	}
       
       green |= mask;

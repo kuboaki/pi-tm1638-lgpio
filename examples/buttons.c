@@ -36,23 +36,15 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-
 #include <stdint.h>
 #include <stdbool.h>
-
-#include <bcm2835.h>
+#include <time.h>
 
 #include "tm1638.h"
 
 int main(int argc, char *argv[])
 {
   tm1638_p t;
-
-  if (!bcm2835_init())
-    {
-      printf("Unable to initialize BCM library\n");
-      return -1;
-    }
 
   // t = tm1638_alloc(17, 21, 22);
   t = tm1638_alloc(19, 13, 06);
@@ -69,7 +61,7 @@ int main(int argc, char *argv[])
       uint8_t  x = tm1638_read_8buttons(t);
       // tm1638_set_8leds(t, 0, x);
       tm1638_set_8leds(t, x, 0);
-      delay(10);
+      do { struct timespec _ts = {0, (long)(10 * 1000)*1000L}; nanosleep(&_ts, NULL); } while(0);
     }
 
   tm1638_free(&t);

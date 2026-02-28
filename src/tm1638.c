@@ -32,25 +32,7 @@
  * 2. Some delays are needed or some pulses are too fast. The delays
  *    are all somewhat arbitrary, and whilst they work for me, I don't
  *    claim that they are optimal.
- * 3. The packaging is rather clunky: I don't grok autotools very well!
- *
- * @section REFERENCES
- *
- * Inevitably people have already done all this for with an Arduino,
- * and that made it easier to write this:
- *
- * 1. John Boxall wrote [a blog about
- * it.](http://tronixstuff.wordpress.com/2012/03/11/arduino-and-tm1638-led-display-modules/)
- * 2. Ricardo Batista wrote [a library to do
- * it.](http://code.google.com/p/tm1638-library/)
- * 3. [Marc](http://www.freetronics.com) (via John above) [found a
- * datasheet.](http://dl.dropbox.com/u/8663580/TM1638English%20version.pdf)
- *
- * This isn't really a port of Ricardo's code: I wanted a different
- * API.  However, I did copy his nice 7-segment font, and his code was
- * very helpful when it came to understanding the data-sheet. 
- * 
- * Thank you to everyone.
+ * 3. Ported from bcm2835 to lgpio for Raspberry Pi 5 (RP1) support.
  *
  * @section LICENSE
  *
@@ -71,10 +53,19 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <time.h>     /* nanosleep */
 
-#include <bcm2835.h>
+#include <lgpio.h>    /* lgpio: replaces bcm2835 */
 
 #include "tm1638.h"
+
+/* Convenience macros to match original bcm2835 style */
+#define GPIO_WRITE(pin, val)  lgGpioWrite(t->lgh, (pin), (val))
+#define GPIO_READ(pin)        lgGpioRead(t->lgh, (pin))
+#define CLAIM_OUT(pin)        lgGpioClaimOutput(t->lgh, 0, (pin), 0)
+#define CLAIM_IN(pin)         lgGpioClaimInput(t->lgh, 0, (pin))
+#define GPIO_FREE(pin)        lgGpioFree(t->lgh, (pin))
+#define DELAY_US(us)          do { struct timespec _ts = {0, (long)(us)*1000L}; nanosleep(&_ts, NULL); } while(0)
 
 /**
  * A struct representing the TM1638 board.
@@ -90,6 +81,8 @@ struct tm1638_tag
 
   uint8_t intensity;  /**< The current LED brightness */
   bool    enable;     /**< true iff we're enabled */
+
+  int     lgh;        /**< lgpio chip handle (gpiochip0) */
 };
 
 static void tm1638_send_raw(const tm1638_p t, uint8_t x);
@@ -116,16 +109,24 @@ tm1638_p tm1638_alloc(uint8_t data, uint8_t clock, uint8_t strobe)
   t->intensity = 7;
   t->enable    = true;
 
-  bcm2835_gpio_fsel(t->data, BCM2835_GPIO_FSEL_OUTP);
-  bcm2835_gpio_fsel(t->clock,    BCM2835_GPIO_FSEL_OUTP);
-  bcm2835_gpio_fsel(t->strobe,   BCM2835_GPIO_FSEL_OUTP);
+  /* Open gpiochip0 (pinctrl-rp1 on Pi5, or the main GPIO bank on Pi4) */
+  t->lgh = lgGpiochipOpen(0);
+  if (t->lgh < 0)
+    {
+      fprintf(stderr, "tm1638_alloc: lgGpiochipOpen(0) failed: %d\n", t->lgh);
+      free(t);
+      return NULL;
+    }
 
-  bcm2835_gpio_write(t->strobe, HIGH);
-  bcm2835_gpio_write(t->clock,  HIGH);
-  delayMicroseconds(1);
+  CLAIM_OUT(t->data);
+  CLAIM_OUT(t->clock);
+  CLAIM_OUT(t->strobe);
+
+  GPIO_WRITE(t->strobe, 1);
+  GPIO_WRITE(t->clock,  1);
+  DELAY_US(1);
   
   tm1638_send_config(t);
-
   tm1638_send_cls(t);
 
   return t;
@@ -134,8 +135,15 @@ tm1638_p tm1638_alloc(uint8_t data, uint8_t clock, uint8_t strobe)
 /* See tm1638.h */
 void tm1638_free(tm1638_p *t)
 {
-  free(*t);
-  *t = NULL;
+  if (t && *t)
+    {
+      lgGpioFree((*t)->lgh, (*t)->data);
+      lgGpioFree((*t)->lgh, (*t)->clock);
+      lgGpioFree((*t)->lgh, (*t)->strobe);
+      lgGpiochipClose((*t)->lgh);
+      free(*t);
+      *t = NULL;
+    }
 } 
 
 /* See tm1638.h */
@@ -194,15 +202,15 @@ static void tm1638_send_raw(const tm1638_p t, uint8_t x)
      but I make no claims that they are optimal or robust */
   for(int i = 0; i < 8; i++)
     {
-      bcm2835_gpio_write(t->clock, LOW);
-      delayMicroseconds(1);
+      GPIO_WRITE(t->clock, 0);
+      DELAY_US(1);
 
-      bcm2835_gpio_write(t->data, x & 1 ? HIGH : LOW);
-      delayMicroseconds(1);
+      GPIO_WRITE(t->data, x & 1 ? 1 : 0);
+      DELAY_US(1);
 
-      x  >>= 1;
-      bcm2835_gpio_write(t->clock, HIGH);
-      delayMicroseconds(1);
+      x >>= 1;
+      GPIO_WRITE(t->clock, 1);
+      DELAY_US(1);
     }
 }
 
@@ -222,27 +230,29 @@ static uint8_t tm1638_receive_raw(const tm1638_p t)
   uint8_t x = 0;
 
   /* Turn GPIO pin into an input */
-  bcm2835_gpio_fsel(t->data, BCM2835_GPIO_FSEL_INPT);
+  GPIO_FREE(t->data);
+  CLAIM_IN(t->data);
     
   for(int i = 0; i < 8; i++)
     {
       x <<= 1;
 
-      bcm2835_gpio_write(t->clock, LOW);
-      delayMicroseconds(1);
+      GPIO_WRITE(t->clock, 0);
+      DELAY_US(1);
 
-      uint8_t y = bcm2835_gpio_lev(t->data);
+      uint8_t y = (uint8_t)GPIO_READ(t->data);
 
       if (y & 1)
-	x |= 1;
-      delayMicroseconds(1);
+        x |= 1;
+      DELAY_US(1);
 
-      bcm2835_gpio_write(t->clock, HIGH);
-      delayMicroseconds(1);
+      GPIO_WRITE(t->clock, 1);
+      DELAY_US(1);
     }
 
   /* Turn GPIO pin back into an output */
-  bcm2835_gpio_fsel(t->data, BCM2835_GPIO_FSEL_OUTP);
+  GPIO_FREE(t->data);
+  CLAIM_OUT(t->data);
 
   return x;
 }
@@ -258,13 +268,13 @@ static void tm1638_send_command(const tm1638_p t, uint8_t x)
 {
   /* The delays in this code are somewhat arbitrary: they work for me
      but I make no claims that they are optimal or robust */
-  bcm2835_gpio_write(t->strobe, LOW);
-  delayMicroseconds(1);
+  GPIO_WRITE(t->strobe, 0);
+  DELAY_US(1);
 
   tm1638_send_raw(t, x);
 
-  bcm2835_gpio_write(t->strobe, HIGH);
-  delayMicroseconds(1);
+  GPIO_WRITE(t->strobe, 1);
+  DELAY_US(1);
 }
 
 /**
@@ -281,14 +291,14 @@ static void tm1638_send_data(const tm1638_p t, uint8_t addr, uint8_t data)
      but I make no claims that they are optimal or robust */
   tm1638_send_command(t, 0x44);
   
-  bcm2835_gpio_write(t->strobe, LOW);
-  delayMicroseconds(1);
+  GPIO_WRITE(t->strobe, 0);
+  DELAY_US(1);
 
   tm1638_send_raw(t, 0xc0 | addr);
   tm1638_send_raw(t, data);
 
-  bcm2835_gpio_write(t->strobe, HIGH);
-  delayMicroseconds(1);
+  GPIO_WRITE(t->strobe, 1);
+  DELAY_US(1);
 }
     
 /* See tm1638.h */
@@ -304,15 +314,15 @@ void tm1638_set_7seg_text(const tm1638_p t, const char *str, uint8_t dots)
 
   for(int i = 0, j = 1; i < 8; i++, j <<= 1)
     {
-      // We want the loop to finish, but don't walk over the end of the string
+      /* We want the loop to finish, but don't walk over the end of the string */
       char c = *p;
       if (c)
-	p++;
+        p++;
       
-      uint8_t f =  tm1638_font(c);
+      uint8_t f = tm1638_font(c);
 
       if (dots & j)
-	f |= 128;
+        f |= 128;
 
       tm1638_set_7seg_raw(t, i, f);
     }
@@ -338,15 +348,15 @@ void tm1638_send_cls(const tm1638_p t)
      but I make no claims that they are optimal or robust */
   tm1638_send_command(t, 0x40);
 
-  bcm2835_gpio_write(t->strobe, LOW);
-  delayMicroseconds(1);
+  GPIO_WRITE(t->strobe, 0);
+  DELAY_US(1);
   
   tm1638_send_raw(t, 0xc0);
   for(int i = 0; i < 16; i++)
     tm1638_send_raw(t, 0x00);
 
-  bcm2835_gpio_write(t->strobe, HIGH);
-  delayMicroseconds(1); 
+  GPIO_WRITE(t->strobe, 1);
+  DELAY_US(1); 
 }
 
 /* See tm1638.h */
@@ -379,8 +389,8 @@ uint32_t tm1638_read_buttons(const tm1638_p t)
 {
   /* The delays in this code are somewhat arbitrary: they work for me
      but I make no claims that they are optimal or robust */
-  bcm2835_gpio_write(t->strobe, LOW);
-  delayMicroseconds(1);
+  GPIO_WRITE(t->strobe, 0);
+  DELAY_US(1);
 
   tm1638_send_raw(t, 0x42);
   
@@ -391,8 +401,8 @@ uint32_t tm1638_read_buttons(const tm1638_p t)
       x |= tm1638_receive_raw(t);
     }
 
-  bcm2835_gpio_write(t->strobe, HIGH);
-  delayMicroseconds(1);
+  GPIO_WRITE(t->strobe, 1);
+  DELAY_US(1);
 
   return x;
 }
@@ -408,14 +418,13 @@ uint8_t tm1638_read_8buttons(const tm1638_p t)
       y <<= 1;
 
       if (x & 0x80000000)
-	y |= 0x10;
+        y |= 0x10;
 
       if (x & 0x08000000)
-	y |= 0x01;
+        y |= 0x01;
 
       x <<= 8;
     }
 
   return y;
 }
-  

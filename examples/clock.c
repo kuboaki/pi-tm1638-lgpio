@@ -40,18 +40,11 @@
 #include <stdbool.h>
 #include <time.h>
 
-#include <bcm2835.h>
 #include <tm1638.h>
 
 int main(int argc, char *argv[])
 {
   tm1638_p t;
-
-  if (!bcm2835_init())
-    {
-      printf("Unable to initialize BCM library\n");
-      return -1;
-    }
 
   // t = tm1638_alloc(17, 21, 22);
   t = tm1638_alloc(19, 13, 06);
@@ -70,7 +63,7 @@ int main(int argc, char *argv[])
       snprintf(text, 9, "%02d %02d %02d", tm->tm_hour, tm->tm_min, tm->tm_sec);
 
       tm1638_set_7seg_text(t, text, 0x00);
-      delay(100);
+      do { struct timespec _ts = {0, (long)(100 * 1000)*1000L}; nanosleep(&_ts, NULL); } while(0);
     }
 
   return 0;
