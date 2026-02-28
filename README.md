@@ -14,18 +14,17 @@ This port replaces bcm2835 with lgpio, which supports both RP1 and earlier BCM c
 
 ## Confirmed Working
 
-| Hardware | OS |
-|---|---|
-| Raspberry Pi 5 | Raspberry Pi OS Bookworm (64bit) |
+| Hardware | OS | Kernel |
+|---|---|---|
+| Raspberry Pi 5 | Raspberry Pi OS Bookworm (Debian 12, 64bit) | 6.12.62 |
+| Raspberry Pi 4 | Raspberry Pi OS Trixie (Debian 13, 64bit) | 6.12.47 |
 
 ## Dependencies
-
 ```bash
 sudo apt install liblgpio-dev
 ```
 
 ## Build
-
 ```bash
 git clone https://github.com/kuboaki/pi-tm1638-lgpio.git
 cd pi-tm1638-lgpio
@@ -39,7 +38,8 @@ sudo make install
 
 - `src/tm1638.c`: Replaced bcm2835 API with lgpio API
 - `configure.ac`: Changed library dependency from bcm2835 to lgpio
-- `src/Makefile.am`: Updated CFLAGS and LIBS
+- `src/Makefile.am`: Updated CFLAGS (`-std=c99` to `-std=gnu99`) and LIBS
+- `examples/Makefile.am`: Updated CFLAGS (`-std=c99` to `-std=gnu99`)
 - `examples/*.c`: Removed `bcm2835_init()/close()`, replaced `delay()` with `nanosleep()`
 
 ## Original
