@@ -6,6 +6,11 @@ A port of [pi-tm1638](https://github.com/mjoldfield/pi-tm1638) by Martin Oldfiel
 updated to use [lgpio](http://abyz.me.uk/lg/lgpio.html) instead of bcm2835.
 This enables support for Raspberry Pi 5 (RP1 chip) as well as earlier models.
 
+<figure align="center">
+  <img src="raspi5_and_tm1638.png" alt="RaspberryPi5 and TM1638">
+  <figcaption>Raspberry Pi5 and TM1638 board</figcaption>
+</figure>
+
 ## Background
 
 The original pi-tm1638 library uses the bcm2835 library for GPIO access,
